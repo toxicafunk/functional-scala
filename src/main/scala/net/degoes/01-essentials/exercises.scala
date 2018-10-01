@@ -10,7 +10,7 @@ object types {
   //
   // List all values of the type `Boolean`.
   //
-  val BoolValues: List[Boolean] = ???
+  val BoolValues: List[Boolean] = true :: false :: Nil
 
   //
   // EXERCISE 2
@@ -18,7 +18,17 @@ object types {
   // List all values of the type `Either[Unit, Boolean]`.
   //
   val EitherUnitBoolValues: List[Either[Unit, Boolean]] =
-    ???
+    Right(true) :: Right(false) :: Left(()) :: Nil
+
+  val nothing: Nothing = ???
+  val unit: Unit = ()
+  val thunk: () => Int = () => 42
+
+  val either: Either[Nothing, Int] = Right(42)
+  /*val int = either match {
+    case Left(n: Nothing) => (n: Int)
+    case Right(i) => i
+  }*/
 
   //
   // EXERCISE 3
@@ -26,7 +36,7 @@ object types {
   // List all values of the type `(Boolean, Boolean)`.
   //
   val TupleBoolBoolValues: List[(Boolean, Boolean)] =
-    ???
+    (true, true) :: (true, false) :: (false, true) :: (false, false) :: Nil
 
   //
   // EXERCISE 4
@@ -34,7 +44,7 @@ object types {
   // List all values of the type `Either[Either[Unit, Unit], Unit]`.
   //
   val EitherEitherUnitUnitUnitValues: List[Either[Either[Unit, Unit], Unit]] =
-    ???
+    List(Left(Left(())), Left(Right(())), Right(()))
 
   //
   // EXERCISE 5
@@ -43,6 +53,23 @@ object types {
   // name of a person.
   //
   type Person = ???
+
+  /*
+   * A = { a1, a2, a3 }
+   * |A| = 3
+   * B = { b1, b2 }
+   * |B| = 2
+   * A * B = { {a1,b1}, {a2, b1}, {a3, b1}, {a1,b2}, {a2,b2}, {a3,b2}}
+   * |A * B| = 6
+   */
+
+  //sealed trait Food // sealed so we guarantee a finite number of terms
+  sealed abstract class Food // for binary compatibility
+  case object Cake extends Food
+  case object Chicken extends Food
+  case object Cheese extends Food
+  case object Apple extends Food
+  case class Unknown(description: String) extends Food // infinite values, but finite terms
 
   //
   // EXERCISE 6
@@ -59,7 +86,7 @@ object types {
   // Create a sum type of `Int` and `String` representing the identifier of
   // a robot (a number) or a person (a name).
   //
-  type Identifier = ???
+  type Identifier = Either[Int, String]
 
   //
   // EXERCISE 8
@@ -116,13 +143,24 @@ object types {
 object functions {
   type ??? = Nothing
 
+  /**
+    Three properties of functions:
+    1. Totality. For every single element in the domain, the function returns an element
+       in the codomain.
+    2. Determinism. If f(a) == b at onme time, then f(a) == b at all times.times
+    3. No Side Effects. The *only* effect that applying a function has, is computing its return value.
+    **/
+
+  //def f(x: Int): Int = Nothing `Nothing` is a type, not a value
+
   //
   // EXERCISE 1
   //
   // Convert the following non-function into a function.
   //
+  import scala.util.{Try, Success, Failure}
   def parseInt1(s: String): Int = s.toInt
-  def parseInt2(s: String): ??? = ???
+  def parseInt2(s: String): Try[Int] = Try(s.toInt)
 
   //
   // EXERCISE 2
@@ -132,14 +170,16 @@ object functions {
   def arrayUpdate1[A](arr: Array[A], i: Int, f: A => A): Unit =
     arr.updated(i, f(arr(i)))
   def arrayUpdate2[A](arr: Array[A], i: Int, f: A => A): ??? = ???
-
   //
   // EXERCISE 3
   //
   // Convert the following non-function into a function.
   //
   def divide1(a: Int, b: Int): Int = a / b
-  def divide2(a: Int, b: Int): ??? = ???
+  def divide2(a: Int, b: Int): Option[Int] = b match {
+    case 0 => None
+    case _ => Some(a / b)
+  }
 
   //
   // EXERCISE 4
@@ -152,7 +192,8 @@ object functions {
     id += 1
     newId
   }
-  def freshId2(/* ??? */): (Int, Int) = ???
+  def freshId2(currentAvailableId: Int): (Int, Int) =
+    (currentAvailableId, currentAvailableId + 1) /* next available id */
 
   //
   // EXERCISE 5
@@ -169,10 +210,10 @@ object functions {
   // Convert the following non-function into function.
   //
   def head1[A](as: List[A]): A = {
-    if (as.length == 0) println("Oh no, it's impossible!!!")
+    if (as.length == 0) println("Oh no, it's impossible!!")
     as.head
   }
-  def head2[A](as: List[A]): ??? = ???
+  def head2[A](as: List[A]): Option[A] = as.headOption
 
   //
   // EXERCISE 7
@@ -327,6 +368,9 @@ object higher_order {
 }
 
 object poly_functions {
+
+  val square: Int => Int = x => x * x
+
   //
   // EXERCISE 1
   //
@@ -388,8 +432,9 @@ object poly_functions {
     l: List[String],
     by: String => String)(
       reducer: (String, List[String]) => String):
-      Map[String, String] = ???
-  // groupBy1(Data, By)(Reducer) == Expected
+      Map[String, String] =
+    l.groupBy(by).map{ case (k, v) => k -> reducer(k, v)}
+  groupBy1(Data, By)(Reducer) == Expected
 
   //
   // EXERCISE 6
@@ -433,8 +478,8 @@ object higher_kinded {
   //
   // Create a new type that has kind `(* -> *) -> *`.
   //
-  type NewType1 /* ??? */
-  type Answer3 = `(* => *) => *`[?????]
+  type NewType1[_[_]] /* ??? */
+  type Answer3 = `(* => *) => *`[NewType1]
 
   //
   // EXERCISE 4
@@ -455,7 +500,7 @@ object higher_kinded {
   //
   // Create a trait with kind `[* => *, (* => *) => *] => *`.
   //
-  trait Answer6 /*[]*/
+  trait Answer6[F[_], G[_[_]]]/*[]*/
 
   //
   // EXERCISE 7
@@ -493,7 +538,16 @@ object higher_kinded {
       bind(fa)(f andThen single)
     }
   }
-  val ListCollectionLike: CollectionLike[List] = ???
+  val ListCollectionLike: CollectionLike[List] = new CollectionLike[List] {
+    override def empty[A]: List[A] = List.empty[A]
+
+    override def cons[A](a: A, as: List[A]): List[A] = a :: as
+
+    override def uncons[A](as: List[A]): Option[(A, List[A])] = as match {
+      case Nil => None
+      case head :: tail => Option((head, tail))
+    }
+  }
 
   //
   // EXERCISE 8
@@ -504,7 +558,9 @@ object higher_kinded {
     // This method will return the number of `A`s inside `fa`.
     def size[A](fa: F[A]): Int
   }
-  val ListSized: Sized[List] = ???
+  val ListSized: Sized[List] = new Sized[List] {
+    override def size[A](fa: List[A]) = fa.size
+  }
 
   //
   // EXERCISE 9
@@ -512,7 +568,9 @@ object higher_kinded {
   // Implement `Sized` for `Map`, partially applied with its first type
   // parameter to `String`.
   //
-  val MapSized1: Sized[Map[String, ?]] = ???
+  val MapSized1: Sized[Map[String, ?]] = new Sized[Map[String, ?]] {
+    override def size[A](fa: Map[String, A]) = fa.size
+  }
 
   //
   // EXERCISE 9
@@ -520,14 +578,72 @@ object higher_kinded {
   // Implement `Sized` for `Map`, partially applied with its first type
   // parameter to a user-defined type parameter.
   //
-  def MapSized2[K]: Sized[Map[K, ?]] = ???
+  def MapSized2[K]: Sized[Map[K, ?]] = new Sized[Map[K, ?]] {
+    override def size[A](fa: Map[K, A]) = fa.size
+  }
 
   //
   // EXERCISE 10
   //
   // Implement `Sized` for `Tuple3`.
   //
-  def Tuple3Sized: ?? = ???
+  def Tuple3Sized[B,C]: Sized[Tuple3[B,C,?]] = new Sized[Tuple3[B,C,?]] {
+    override def size[A](fa: Tuple3[B,C,A]) = 1
+  }
+}
+
+object example {
+  /**
+   * Every type class is a set of three things:
+   *
+   *   - Types
+   *   - Operations on values of those types
+   *   - Laws governing the behavior of the operations
+   *
+   * Every type class instance (or instance, for short) is an implementation
+   * of the type class for a set of given types.
+   */
+  abstract class LessThan[A] {
+    // `lessThan` must satisfy transitivity law
+    // `lessThan(a, b) && lessThan(b, c) ==> lessThan(a, c)`
+    def lessThan(left: A, right: A): Boolean
+
+    final def notLessThan(left: A, right: A): Boolean =
+      !lessThan(left, right)
+  }
+  object LessThan {
+    def apply[A](implicit A: LessThan[A]): LessThan[A] = A
+
+    implicit val LessThanInt: LessThan[Int] = new LessThan[Int] {
+      def lessThan(left: Int, right: Int): Boolean = left < right
+    }
+  }
+  implicit class LessThanSyntax[A](val l: A) extends AnyVal {
+    def < (r: A)(implicit A: LessThan[A]): Boolean =
+      A.lessThan(l, r)
+
+    def >= (r: A)(implicit A: LessThan[A]): Boolean =
+      A.notLessThan(l, r)
+  }
+  case class Person(name: String, age: Int)
+  object Person {
+    implicit val PersonLessThan = new LessThan[Person] {
+      def lessThan(left: Person, right: Person): Boolean =
+        if (left.name < right.name) true
+        else if (left.age < right.age) true
+        else false
+    }
+  }
+
+  def sortAll[A: LessThan](l: List[A]): List[A] = l match {
+    case Nil => Nil
+    case x :: xs =>
+      val (lessThan, notLessThan) = xs.partition(_ < x)
+
+      sortAll(lessThan) ++ List(x) ++ sortAll(notLessThan)
+  }
+
+  sortAll(1 :: 3 :: -1 :: 10 :: 45 :: 7 :: 2 :: Nil)
 }
 
 object typeclasses {
@@ -647,7 +763,17 @@ object typeclasses {
 
       sort1(lessThan) ++ List(x) ++ sort1(notLessThan)
   }
-  def sort2[A: Ord](l: List[A]): List[A] = ???
+  def sort2[A: Ord](l: List[A]): List[A] = l match {
+    case Nil => Nil
+    case x :: xs =>
+      val (lessThan, notLessThan) = xs.partition(_ < x)
+      sort2(lessThan) ++ List(x) ++ sort2(notLessThan)
+  }
+
+  implicit val OrdString: Ord[String] = new Ord[String] {
+    override def compare(l: String, r: String): Ordering =
+      if (l < r) LT else if (l > r) GT else EQUAL
+  }
 
   //
   // Scalaz 8 Encoding
@@ -708,7 +834,11 @@ object typeclasses {
   //
   // Create an instance of the `Semigroup` type class for `Int`.
   //
-  implicit val SemigroupInt: Semigroup[Int] = ???
+  implicit val SemigroupInt: Semigroup[Int] = instanceOf {
+    new SemigroupClass[Int] {
+      override def append(l: => Int, r: => Int): Int = l + r
+    }
+  }
 
   //
   // EXERCISE 4
