@@ -502,7 +502,6 @@ object higher_kinded {
   //
   // Create a new type that has kind `(* -> *) -> *`.
   //
-  type NewType1 /* ??? */
   type Answer5 = `(* => *) => *`[?????]
 
   //
@@ -780,17 +779,15 @@ object typeclasses {
       sort2(lessThan) ++ List(x) ++ sort2(notLessThan)
   }
 
-  implicit val OrdString: Ord[String] = new Ord[String] {
-    override def compare(l: String, r: String): Ordering =
-      if (l < r) LT else if (l > r) GT else EQUAL
-  }
-
   //
   // EXERCISE 2
   //
   // Create an instance of `Ord` for the type `String`.
   //
-  implicit val OrdString: Ord[String] = ???
+  implicit val OrdString: Ord[String] = new Ord[String] {
+    override def compare(l: String, r: String): Ordering =
+      if (l < r) LT else if (l > r) GT else EQUAL
+  }
   //
   // Scalaz 8 Encoding
   //

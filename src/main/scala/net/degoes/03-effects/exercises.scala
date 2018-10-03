@@ -2,8 +2,12 @@
 
 package net.degoes.effects
 
+import java.io.IOException
+
+import jdk.nashorn.internal.ir.RuntimeNode.Request
 import scalaz.zio._
 import scalaz.zio.console._
+
 import scala.concurrent.duration._
 
 object zio_background {
@@ -742,13 +746,31 @@ object zio_schedule {
     def ? = ???
   }
 
+  // Schedule[A,B]
+  // consumes A, produces B and decide when to continue
+
+  /*object Request {
+    def apply() = new Request()
+  }
+  trait Response
+  def makeRequest(input: Request): IO[Exception, Response] = ???
+
+  val io2 = makeRequest(Request())
+
+  val schedule = Schedule[Request, Response]
+
+  io2 orElse io2 orElse io2 // can add delays or retries
+  io2.retry(schedule)
+  io2.repeatOrElse(schedule, _)
+  */
+
   //
   // EXERCISE 1
   //
   // Using `Schedule.recurs`, create a schedule that recurs 5 times.
   //
   val fiveTimes: Schedule[Any, Int] =
-    ???
+  Schedule.recurs(5)
 
   //
   // EXERCISE 2
@@ -756,7 +778,7 @@ object zio_schedule {
   // Using the `repeat` method of the `IO` object, repeat printing "Hello World"
   // five times to the console.
   //
-  val repeated1 = putStrLn("Hello World")
+  val repeated1 = putStrLn("Hello World").repeat(fiveTimes)
 
   //
   // EXERCISE 3
@@ -765,7 +787,7 @@ object zio_schedule {
   // second.
   //
   val everySecond: Schedule[Any, Int] =
-    ???
+  Schedule.spaced(1.second)
 
   //
   // EXERCISE 4
@@ -774,7 +796,9 @@ object zio_schedule {
   // and the `everySecond` schedule, create a schedule that repeats fives times,
   // every second.
   //
-  val fiveTimesEverySecond = ???
+  val fiveTimesEverySecond = fiveTimes && everySecond
+  // && will repeat as long as both schedules agree, at every step will choose the max space/delay
+
 
   //
   // EXERCISE 5
@@ -782,7 +806,7 @@ object zio_schedule {
   // Using the `repeat` method of the `IO` object, repeat the action
   // putStrLn("Hi hi") using `fiveTimesEverySecond`.
   //
-  val repeated2 = ???
+  val repeated2 = putStrLn("Hi hi").repeat(fiveTimesEverySecond)
 
   //
   // EXERCISE 6
@@ -791,7 +815,7 @@ object zio_schedule {
   // schedule, and the `everySecond` schedule, create a schedule that repeats
   // fives times rapidly, and then repeats every second forever.
   //
-  val fiveTimesThenEverySecond = ???
+  val fiveTimesThenEverySecond = fiveTimes andThen everySecond
 
   //
   // EXERCISE 7
@@ -799,17 +823,25 @@ object zio_schedule {
   // Using the `retry` method of the `IO` object, retry the following error
   // a total of five times.
   //
+
+  // IO.repeat feeds values from successful IO
+  // IO.retry feeds errors of failed IO
+
+  val fiveTimesWaitOneSecLoop =
+    Schedule.recurs(5) andThen (Schedule.spaced(1.second) && Schedule.recurs(1)).loop
+
   val error1 = IO.fail("Uh oh!")
-  val retried5 = error1 ?
+  val retried5 = error1.retry(fiveTimes)
 
   //
   // EXERCISE 8
   //
-  // Using the `&&` method of the `Schedule` object, the `fiveTimes` schedule,
+  // Using the `||` method of the `Schedule` object, the `fiveTimes` schedule,
   // and the `everySecond` schedule, create a schedule that repeats the minimum
   // of five times and every second.
   //
-  val fiveTimesOrEverySecond = ???
+  val fiveTimesOrEverySecond = fiveTimes || everySecond
+  // continues as long as either one agrees and choose the min space
 
   //
   // EXERCISE 9
@@ -819,8 +851,12 @@ object zio_schedule {
   // switches over to fixed spacing of 60 seconds between recurrences, but will
   // only do that for up to 100 times, and produce a list of the results.
   //
+  val jitteredEverySecond = Schedule.spaced(1.second).jittered
   def mySchedule[A]: Schedule[A, List[A]] =
-    ???
+    (
+      (Schedule.exponential(10.millisecond).whileValue(_ < 60.seconds)) andThen
+      (Schedule.fixed(60.seconds) && Schedule.recurs(100))
+    ).jittered *> Schedule.identity[A].collect
 }
 
 object zio_interop {
@@ -944,7 +980,7 @@ object zio_promise extends RTS {
   val handoff1: IO[Nothing, Int] =
     for {
       promise <- Promise.make[Nothing, Int]
-      _       <- (promise.complete(42).delay(10.milliseconds) *> _).fork
+      _       <- promise.complete(42).delay(10.milliseconds).fork
       value   <- promise.get
     } yield value
 
@@ -981,8 +1017,22 @@ object zio_queue {
   val makeQueue: IO[Nothing, Queue[Int]] =
     Queue.bounded(10)
 
-  val makeQueue: IO[Nothing, Queue[Int]] = Queue.bounded(10)
+  //
+  // EXERCISE 2
+  //
+  // Using the `offer` method of `Queue`, place an integer value into a queue.
+  //
+  val offered1: IO[Nothing, Unit] =
+  for {
+    queue <- makeQueue
+    _     <- queue.offer(42)
+  } yield ()
 
+  //
+  // EXERCISE 3
+  //
+  // Using the `take` method of `Queue`, take an integer value from a queue.
+  //
   val taken1: IO[Nothing, Int] =
     for {
       queue <- makeQueue
@@ -990,6 +1040,12 @@ object zio_queue {
       value <- queue.take
     } yield value
 
+  //
+  // EXERCISE 4
+  //
+  // In one fiber, place 2 values into a queue, and in the main fiber, read
+  // 2 values from the queue.
+  //
   val offeredTaken1: IO[Nothing, (Int, Int)] =
     for {
       queue <- makeQueue
@@ -998,6 +1054,20 @@ object zio_queue {
       v2    <- queue.take
     } yield (v1, v2)
 
+  //
+  // EXERCISE 5
+  //
+  // In one fiber, read infintely many values out of the queue and write them
+  // to the console. In the main fiber, write 100 values into a queue.
+  //
+  /*
+  val infiniteReader1: IO[Nothing, List[Int]] =
+    for {
+      queue <- makeQueue
+      _     <- (??? : IO[Nothing, Nothing]).fork
+      vs    <- (queue ? : IO[Nothing, List[Int]])
+    } yield vs
+   */
   val infiniteReader1: IO[Nothing, List[Int]] = {
     def repeatedlyOffer[A](element: A, times: Int, queue: Queue[A]): IO[Nothing, List[A]] =
       if (times == 0) IO.point(Nil)
@@ -1022,55 +1092,6 @@ object zio_queue {
         i
       })))
     } yield vs*/
-  //
-  // EXERCISE 2
-  //
-  // Using the `offer` method of `Queue`, place an integer value into a queue.
-  //
-  val offered1: IO[Nothing, Unit] =
-    for {
-      queue <- makeQueue
-      _     <- (queue ? : IO[Nothing, Unit])
-    } yield ()
-
-  //
-  // EXERCISE 3
-  //
-  // Using the `take` method of `Queue`, take an integer value from a queue.
-  //
-  val taken1: IO[Nothing, Int] =
-    for {
-      queue <- makeQueue
-      _     <- queue.offer(42)
-      value <- (queue ? : IO[Nothing, Int])
-    } yield value
-
-  //
-  // EXERCISE 4
-  //
-  // In one fiber, place 2 values into a queue, and in the main fiber, read
-  // 2 values from the queue.
-  //
-  val offeredTaken1: IO[Nothing, (Int, Int)] =
-    for {
-      queue <- makeQueue
-      _     <- (??? : IO[Nothing, Unit]).fork
-      v1    <- (queue ? : IO[Nothing, Int])
-      v2    <- (queue ? : IO[Nothing, Int])
-    } yield (v1, v2)
-
-  //
-  // EXERCISE 5
-  //
-  // In one fiber, read infintely many values out of the queue and write them
-  // to the console. In the main fiber, write 100 values into a queue.
-  //
-  val infiniteReader1: IO[Nothing, List[Int]] =
-    for {
-      queue <- makeQueue
-      _     <- (??? : IO[Nothing, Nothing]).fork
-      vs    <- (queue ? : IO[Nothing, List[Int]])
-    } yield vs
 
   //
   // EXERCISE 6
@@ -1078,6 +1099,7 @@ object zio_queue {
   // Using `Queue`, `Ref`, and `Promise`, implement an "actor" like construct
   // that can atomically update the values of a counter.
   //
+  /*
   val makeCounter: IO[Nothing, Int => IO[Nothing, Int]] =
     for {
       counter <- Ref(0)
@@ -1086,10 +1108,58 @@ object zio_queue {
     } yield { (amount: Int) =>
       ???
     }
+  */
+
+  val makeCounter: IO[Nothing, Int => IO[Nothing, Int]] =
+    for {
+      counter <- Ref(0)
+      queue   <- Queue.bounded[(Int, Promise[Nothing, Int])](100)
+      // consume from the queue and update the counter and then complete the promise to indicate
+      // we have finished with the element we have pulled from the queue
+      _       <- queue.take
+        .flatMap{
+          case (completeWith: Int, promise: Promise[Nothing, Int]) =>
+            counter.update(existing => existing + completeWith) *> promise.complete(completeWith)
+        }
+        .forever
+        .fork: IO[Nothing, Fiber[Nothing, Nothing]]
+    } yield {
+      // we yield a function for a way to send messages to the actor, let it do the work and get the updated value
+      // only the actor deals with the Ref and communicates back with us (this piece of code below) the updated Ref value
+      // using the Promise
+      amount: Int =>
+        for {
+          promise   <- Promise.make[Nothing, Int]
+          _         <- queue.offer((amount, promise))
+          newValue  <- promise.get      // get the new value of the counter (this work is done by the "actor" fiber)
+        } yield newValue
+    }
+
+  // create a producer
+  val counterExample: IO[Nothing, Int] =
+    for {
+      counterFn <- makeCounter
+      _         <- IO.parAll(List.fill(100)(IO.traverse(0 to 100)(counterFn)))
+      value     <- counterFn(0) // call the counterFn with 0, this will happen 100 times in parallel thanks to parAll
+    } yield value
 }
 
 object zio_rts {
 
+  val MyRTS: RTS = new RTS{}
+
+  val u1 : Unit = MyRTS.unsafeRun(putStrLn("Hello World!"))
+
+  (MyRTS.unsafeRunSync(putStrLn("Hello World!"))): ExitResult[IOException, Unit]
+
+  object MyApp extends App {
+    def run(args: List[String]): IO[Nothing, ExitStatus] =
+      (for {
+        _ <- putStrLn("Hello World!")
+        n <- getStrLn
+        _ <- putStrLn(s"Hello $n")
+      } yield ()).redeemPure(_ => ExitStatus.ExitNow(1), _ => ExitStatus.ExitNow(0))
+  }
 }
 
 object zio_advanced {
