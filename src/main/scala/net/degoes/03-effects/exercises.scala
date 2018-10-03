@@ -592,6 +592,8 @@ object zio_concurrency {
   def fibonacci(n: Int): IO[Nothing, Int] =
     if (n <= 1) IO.now(n)
     else fibonacci(n - 1).seqWith(fibonacci(n - 2))(_ + _)
+
+  val timedout: IO[Nothing, Option[Int]] = fibonacci(100) ?
 }
 
 object zio_resources {
@@ -607,6 +609,29 @@ object zio_resources {
       IO.syncException(new InputStream(new FileInputStream(file)))
   }
 
+  {
+    println("Started")
+    try {
+      try throw new Error("Primary error")
+      finally throw new Error("Secondary error")
+    } catch {
+      case e : Error => println(e)
+    }
+    println("Ended")
+  }
+
+  /*val acquire: IO[Exception, FileHandle]
+  val release: FileHandle => IO[Nothing, Unit]
+  val use    : FileHandle => IO[Exception, Result]
+
+  acquire.bracket(release)(use)
+  acquire.bracket(release) { fileHandle =>
+    for {
+      bytes1 <- readChunk(fileHandle)
+      bytes2 <- readChunk(fileHandle)
+    } yield bytes1 ++ bytes2
+  }*/
+
   //
   // EXERCISE 1
   //
@@ -617,7 +642,8 @@ object zio_resources {
     try throw new Exception("Uh oh")
     finally println("On the way out...")
   val tryCatch2: IO[Exception, Unit] =
-    ???
+    IO.fail(new Exception("Uh oh"))
+      .bracket(_ => IO.sync(println("On the way out...")))(IO.now)
 
   //
   // EXERCISE 2
@@ -637,7 +663,15 @@ object zio_resources {
       bytes  <- readAll(stream, Nil)
     } yield bytes
   }
-  def readFile2(file: File): IO[Exception, List[Byte]] = ???
+  def readFile2(file: File): IO[Exception, List[Byte]] ={
+
+    def readAll(is: InputStream, acc: List[Byte]): IO[Exception, List[Byte]] =
+      is.read.flatMap {
+        case None => IO.now(acc.reverse)
+        case Some(byte) => readAll(is, byte :: acc)
+      }
+    InputStream.openFile(file).bracket(_.close.attempt.void)(readAll(_, Nil))
+  }
 
   //
   // EXERCISE 3
@@ -648,7 +682,7 @@ object zio_resources {
     (try0: IO[E, A])
     (catch0: PartialFunction[E, IO[E, A]])
     (finally0: IO[Nothing, Unit]): IO[E, A] =
-      ???
+    try0.catchSome(catch0).ensuring(finally0)
 
   //
   // EXERCISE 4
@@ -814,15 +848,127 @@ object zio_interop {
 }
 
 object zio_ref {
+  // Ref is a volatile, atomic, purely functional `var`
+  val zero: IO[Nothing, Ref[Int]] = Ref(0)
 
+  // change value to be 10 times greater than initial value
+  /*val t = for {
+    ref <- zero
+    value <- ref.get
+    newValue <- value + 10
+    _   <- ref.set(newValue)
+  } yield newValue*/
+
+  // use update to atomically increment by 10
+  val atomicallyIncrementedBy10: IO[Nothing, Int] = for {
+    ref <- zero
+    newVal <- ref.update(current => current + 10)
+  } yield newVal
+
+  // increment atomically by 10 but return old variable
+  val atomicallyIncrementedBy10PlusGet: IO[Nothing, Int] =
+    for {
+      ref       <- zero
+      newValue  <- ref.modify(existing => (existing /*old*/, existing + 10 /*new*/)): IO[Nothing, Int]
+    } yield newValue
 }
 
-object zio_promise {
+object zio_promise extends RTS {
+  // use make construct a promise that can't fail but can be completed with an integer
+  val intPromise: IO[Nothing, Promise[Nothing, Int]] = Promise.make
 
+  // use complete
+  val completed1: IO[Nothing, Boolean] = for {
+    promise <- intPromise
+    completed <- promise.complete(5)
+  } yield completed
+
+  // use error
+  /*val errored1: IO[Nothing, Boolean] = for {
+    promise <- intPromise
+    completed <- promise.error(/* can't return Nothing*/)
+  } yield completed
+  */
+
+  val errored1: IO[Nothing, Boolean] = for {
+    promise <- Promise.make[Error, String]
+    completed <- promise.error(new Error("Boom!"))
+  } yield completed
+
+  val interrupted: IO[Nothing, Boolean] = for {
+    promise <- Promise.make[Error, String]
+    completed <- promise.interrupt
+  } yield completed
+
+  val handoff1: IO[Nothing, Int] =
+    for {
+      promise <- Promise.make[Nothing, Int]
+      _       <- (promise.complete(42).delay(10.milliseconds) *> _).fork
+      value   <- promise.get
+    } yield value
+
+  val handoff2: IO[Error, Int] =
+    for {
+      promise <- Promise.make[Error, Int]
+      _       <- (promise.error(new Error("Uh oh")).delay(10.milliseconds)).fork
+      value   <- promise.get
+    } yield value
+
+  val handoff3: IO[Error, Int] =
+    for {
+      promise <- Promise.make[Error, Int]
+      _       <- promise.interrupt.delay(10.milliseconds).fork
+      value   <- promise.get
+    } yield value
+
+  def main(args: Array[String]): Unit = {
+    println(unsafeRun(handoff1))
+  }
 }
 
 object zio_queue {
 
+  val makeQueue: IO[Nothing, Queue[Int]] = Queue.bounded(10)
+
+  val taken1: IO[Nothing, Int] =
+    for {
+      queue <- makeQueue
+      _     <- queue.offer(42)
+      value <- queue.take
+    } yield value
+
+  val offeredTaken1: IO[Nothing, (Int, Int)] =
+    for {
+      queue <- makeQueue
+      _     <- (queue.offer(42) *> queue.offer(42)).fork
+      v1    <- queue.take
+      v2    <- queue.take
+    } yield (v1, v2)
+
+  val infiniteReader1: IO[Nothing, List[Int]] = {
+    def repeatedlyOffer[A](element: A, times: Int, queue: Queue[A]): IO[Nothing, List[A]] =
+      if (times == 0) IO.point(Nil)
+      else for {
+        _       <- queue.offer(element)
+        listInt <- repeatedlyOffer(element, times - 1, queue)
+      } yield listInt :+ element
+
+    for {
+      queue <- makeQueue
+      _     <- (queue.take.forever: IO[Nothing, Nothing]).fork
+      vs    <- repeatedlyOffer(element = 42, times = 100, queue = queue): IO[Nothing, List[Int]]
+    } yield vs
+  }
+
+  /*val infiniteReader2: IO[Nothing, List[Int]] =
+    for {
+      queue <- makeQueue
+      _     <- (queue.take.flatMap(i => putStrLn(i.toString).attempt.void) forever: IO[Nothing, Nothing]).fork
+      vs    <- (IO.sequence((1 to 100).toList.map(i => {
+        queue.offer(i)
+        i
+      })))
+    } yield vs*/
 }
 
 object zio_rts {
