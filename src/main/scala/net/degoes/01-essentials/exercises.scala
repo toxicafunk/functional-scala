@@ -36,7 +36,7 @@ object types {
   // List all values of the type `(Boolean, Boolean)`.
   //
   val TupleBoolBoolValues: List[(Boolean, Boolean)] =
-    (true, true) :: (true, false) :: (false, true) :: (false, false) :: Nil
+    ???
 
   //
   // EXERCISE 4
@@ -83,22 +83,31 @@ object types {
   //
   // EXERCISE 7
   //
+  // Prove that `A * 0` is equivalent to `0` by implementing the following two
+  // functions.
+  //
+  def to2[A](t: (A, Nothing)): Nothing = ???
+  def from2[A](n: Nothing): (A, Nothing) = ???
+
+  //
+  // EXERCISE 8
+  //
   // Create a sum type of `Int` and `String` representing the identifier of
   // a robot (a number) or a person (a name).
   //
   type Identifier = Either[Int, String]
 
   //
-  // EXERCISE 8
+  // EXERCISE 9
   //
   // Prove that `A + 0` is equivalent to `A` by implementing the following two
   // functions.
   //
-  def to2[A](t: Either[A, Nothing]): A = ???
-  def from2[A](a: A): Either[A, Nothing] = ???
+  def to3[A](t: Either[A, Nothing]): A = ???
+  def from3[A](a: A): Either[A, Nothing] = ???
 
   //
-  // EXERCISE 9
+  // EXERCISE 10
   //
   // Create either a sum type or a product type (as appropriate) to represent a
   // credit card, which has a number, an expiration date, and a security code.
@@ -106,7 +115,7 @@ object types {
   type CreditCard = ???
 
   //
-  // EXERCISE 10
+  // EXERCISE 11
   //
   // Create either a sum type or a product type (as appropriate) to represent a
   // payment method, which could be a credit card, bank account, or
@@ -115,15 +124,15 @@ object types {
   type PaymentMethod = ???
 
   //
-  // EXERCISE 11
+  // EXERCISE 12
   //
   // Create either a sum type or a product type (as appropriate) to represent an
-  // employee at a company, which has a title, salary, name, employment date.
+  // employee at a company, which has a title, salary, name, and employment date.
   //
   type Employee = ???
 
   //
-  // EXERCISE 12
+  // EXERCISE 13
   //
   // Create either a sum type or a product type (as appropriate) to represent a
   // piece on a chess board, which could be a pawn, rook, bishop, knight,
@@ -132,7 +141,7 @@ object types {
   type ChessPiece = ???
 
   //
-  // EXERCISE 13
+  // EXERCISE 14
   //
   // Create an ADT model of a game world, including a map, a player, non-player
   // characters, different classes of items, and character stats.
@@ -168,8 +177,9 @@ object functions {
   // Convert the following non-function into a function.
   //
   def arrayUpdate1[A](arr: Array[A], i: Int, f: A => A): Unit =
-    arr.updated(i, f(arr(i)))
+    arr.update(i, f(arr(i)))
   def arrayUpdate2[A](arr: Array[A], i: Int, f: A => A): ??? = ???
+
   //
   // EXERCISE 3
   //
@@ -305,7 +315,6 @@ object functions {
     def finish(): List[List[Boolean]] =
       canvas.map(_.toList).toList
   }
-  def draw2(size: Int /* */): ??? = ???
 }
 
 object higher_order {
@@ -484,16 +493,17 @@ object higher_kinded {
   //
   // EXERCISE 4
   //
-  // Create a trait with kind `*`.
+  // Create a trait with kind `[*, *, *] => *`.
   //
   trait Answer4 /*[]*/
 
   //
   // EXERCISE 5
   //
-  // Create a trait with kind `[*, *, *] => *`.
+  // Create a new type that has kind `(* -> *) -> *`.
   //
-  trait Answer5 /*[]*/
+  type NewType1 /* ??? */
+  type Answer5 = `(* => *) => *`[?????]
 
   //
   // EXERCISE 6
@@ -776,6 +786,12 @@ object typeclasses {
   }
 
   //
+  // EXERCISE 2
+  //
+  // Create an instance of `Ord` for the type `String`.
+  //
+  implicit val OrdString: Ord[String] = ???
+  //
   // Scalaz 8 Encoding
   //
   sealed abstract class InstanceOfModule {
@@ -823,14 +839,14 @@ object typeclasses {
     def <> (r: => A)(implicit A: Semigroup[A]): A = A.append(l(), r)
   }
   //
-  // EXERCISE 2
+  // EXERCISE 3
   //
-  // Create an instance of the `Semigroup` type class for `java.time.Instant`.
+  // Create an instance of the `Semigroup` type class for `java.time.Duration`.
   //
-  implicit val SemigroupInstant: Semigroup[java.time.Instant] = ???
+  implicit val SemigroupInstant: Semigroup[java.time.Duration] = ???
 
   //
-  // EXERCISE 3
+  // EXERCISE 4
   //
   // Create an instance of the `Semigroup` type class for `Int`.
   //
@@ -841,14 +857,14 @@ object typeclasses {
   }
 
   //
-  // EXERCISE 4
+  // EXERCISE 5
   //
   // Create an instance of the `Semigroup` type class for `Set[A]`.
   //
   implicit def SemigroupSet[A]: Semigroup[Set[A]] = ???
 
   //
-  // EXERCISE 5
+  // EXERCISE 6
   //
   // Create an instance of the `Semigroup` type class for `Map[K, ?]`. Hint:
   // you will need some constraint applied to the values.
@@ -857,7 +873,7 @@ object typeclasses {
     ???
 
   //
-  // EXERCISE 6
+  // EXERCISE 7
   //
   // Create a type class `Monoid[A]` that implies `Semigroup[A]` (that is, every
   // `Monoid[A]` must be a `Semigroup[A]`), which adds a single operation called
@@ -881,35 +897,35 @@ object typeclasses {
   def empty[A: Monoid]: A = ???
 
   //
-  // EXERCISE 7
+  // EXERCISE 8
   //
-  // Create an instance of the `Monoid` type class for `java.time.Instant`.
+  // Create an instance of the `Monoid` type class for `java.time.Duration`.
   //
-  implicit val MonoidInstant: Monoid[java.time.Instant] = ???
+  implicit val MonoidInstant: Monoid[java.time.Duration] = ???
 
   //
-  // EXERCISE 8
+  // EXERCISE 9
   //
   // Create an instance of the `Monoid` type class for `String`.
   //
   implicit val MonoidString: Monoid[String] = ???
 
   //
-  // EXERCISE 9
+  // EXERCISE 10
   //
   // Create an instance of the `Monoid` type class for `List[A]`.
   //
   implicit def MonoidList[A]: Monoid[List[A]] = ???
 
   //
-  // EXERCISE 10
+  // EXERCISE 11
   //
   // Create an instance of the `Monoid` type class for `Int`.
   //
   implicit val MonoidInt: Monoid[Int] = ???
 
   //
-  // EXERCISE 11
+  // EXERCISE 12
   //
   // Using a newtype, create an instance of the `Monoid` type class for `Int`
   // representing the additive monoid, with addition as `append`, and 0 as
@@ -919,7 +935,7 @@ object typeclasses {
   implicit val MonoidSum: Monoid[Sum] = ???
 
   //
-  // EXERCISE 12
+  // EXERCISE 13
   //
   // Using a newtype, create an instance of the `Monoid` type class for `Int`
   // representing the multiplicative monoid, with multiplication as `append`,
@@ -929,7 +945,7 @@ object typeclasses {
   implicit val MonoidProduct: Monoid[Product] = ???
 
   //
-  // EXERCISE 13
+  // EXERCISE 14
   //
   // Create an instance of the `Collection` type class for `List`.
   //

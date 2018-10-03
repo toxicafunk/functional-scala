@@ -70,9 +70,34 @@ object algebra {
   // Try to define an instance of `Monoid` for `NotEmpty` for any type `A`.
   //
   implicit def MonoidNotEmpty[A]: Monoid[NotEmpty[A]] = ???
+
+  class Add(val value: Int) extends AnyVal
+  object Add { def apply(value: Int) = new Add(value) }
+  class Mul(val value: Int) extends AnyVal
+  object Mul { def apply(value: Int) = new Mul(value) }
+
+  implicit val IntSemigroup1: Semigroup[Add] = (l, r) => Add(l.value + r.value)
+  implicit val IntSemigroup2: Semigroup[Mul] = (l, r) => Mul(l.value * r.value)
+
+  Add(1) |+| Add(2)
+  Mul(1) |+| Mul(2)
 }
 
 object functor {
+  /**
+   * Identity Law
+   *   map(fa, identity) == fa
+   *
+   * Composition Law
+   *   map(map(fa, g), f) == map(fa, f.compose(g))
+   */
+
+  val Numbers  = List(12, 123, 0, 123981)
+  val Expected = List( 2,   3, 1,      6)
+  val g : Int => String = (i: Int) => i.toString
+  val f : String => Int = (s: String) => s.length
+  Numbers.map(g andThen f) == Numbers.map(g).map(f)
+
   //
   // EXERCISE 1
   //
@@ -103,12 +128,76 @@ object functor {
   //
   // Define an instance of `Functor` for Parser[E, ?].
   //
-  //case class Parser[+E, +A](run: String => Either[E, (String, A)])
-  implicit def ParserFunctor[E]: Functor[Parser[E, ?]] =
-    new Functor[Parser[E, ?]] {
-      def map[A, B](fa: Parser[E, A])(f: A => B): Parser[E, B] =
-        ???
-    }
+  case class Parser[+E, +A](run: String => Either[E, (String, A)])
+  object Parser {
+    def fail[E](e: E): Parser[E, Nothing] =
+      Parser(input => Left(e))
+
+    def point[A](a: => A): Parser[Nothing, A] =
+      Parser(input => Right((input, a)))
+
+    def char[E](e: E): Parser[E, Char] =
+      Parser(input =>
+        if (input.length == 0) Left(e)
+        else Right((input.drop(1), input.charAt(0))))
+
+    implicit def ParserFunctor[E]: Functor[Parser[E, ?]] =
+      new Functor[Parser[E, ?]] {
+        def map[A, B](fa: Parser[E, A])(f: A => B): Parser[E, B] =
+          ???
+      }
+  }
+
+  trait Zip[F[_]] extends Functor[F] {
+    def zip[A, B](l: F[A], r: F[B]): F[(A, B)]
+  }
+  implicit class ZipSyntax[F[_], A](left: F[A]) {
+    def zip[B](right: F[B])(implicit F: Zip[F]): F[(A, B)] =
+      F.zip(left, right)
+  }
+
+  sealed trait BankTransaction[+A]
+  case class Return[A](value: A) extends BankTransaction[A]
+  case class Deposit[A](amount: BigDecimal, next: BigDecimal => BankTransaction[A]) extends BankTransaction[A]
+  case class Withdraw[A](amount: BigDecimal, next: BigDecimal => BankTransaction[A]) extends BankTransaction[A]
+  object BankTransaction {
+    implicit val FunctorBankTransaction: Functor[BankTransaction] with Zip[BankTransaction] =
+      new Functor[BankTransaction] with Zip[BankTransaction] {
+        def map[A, B](fa: BankTransaction[A])(f: A => B): BankTransaction[B] =
+          fa match {
+            case Return(value) => Return(f(value))
+            case Deposit(amount, next) => Deposit(amount, (b: BigDecimal) => next(b).map(f))
+            case Withdraw(amount, next) => Withdraw(amount, (b: BigDecimal) => next(b).map(f))
+          }
+
+        def zip[A, B](l: BankTransaction[A], r: BankTransaction[B]): BankTransaction[(A, B)] = {
+          val nested: BankTransaction[BankTransaction[(A, B)]] = l.map(a => r.map(b => (a, b)))
+
+          def flatten[C](v: BankTransaction[BankTransaction[C]]): BankTransaction[C] =
+            v match {
+              case Return(t) => t
+              case Deposit(amount, next) => Deposit(amount, (b: BigDecimal) => flatten(next(b)))
+              case Withdraw(amount, next) => Withdraw(amount, (b: BigDecimal) => flatten(next(b)))
+            }
+
+          flatten(nested)
+        }
+      }
+  }
+  val t1 : BankTransaction[BigDecimal] = ???
+  val t2 : BankTransaction[String] = t1.map(d => d.toString)
+
+  val supplier1 : BankTransaction[BigDecimal] = ???
+  val supplier2 : BankTransaction[BigDecimal] = ???
+  val allSuppliers : BankTransaction[(BigDecimal, BigDecimal)] =
+    supplier1.zip(supplier2)
+
+  trait HttpHeader
+  val Headers : Parser[Exception, List[HttpHeader]] = ???
+  val Body    : Parser[Exception, String] = ???
+  val Content : Parser[Exception, (List[HttpHeader], String)] = ???
+
+  def zip[E, A, B](l: Parser[E, A], r: Parser[E, B]): Parser[E, (A, B)] = ???
 
   //
   // EXERCISE 4
@@ -172,10 +261,14 @@ object functor {
   // EXERCISE 7
   //
   // Define an instance of `Functor` for `FunctorNest`.
+  // e.g. Future[Option[A]], Future[Either[Error, Option[A]]]
+  // Future[List[Either[Error, Option[A]]]]
   //
   case class FunctorNest[F[_], G[_], A](run: F[G[A]])
   implicit def FunctorNestFunctor[F[_]: Functor, G[_]: Functor]:
     Functor[FunctorNest[F, G, ?]] = ???
+
+
 
   def zipOption[A, B](l: Option[A], r: Option[B]): Option[(A, B)] =
     (l, r) match {
@@ -218,11 +311,11 @@ object functor {
   //
   // Bonus: Implement `ap2` in terms of `zip`.
   //
-  val example1 = (Option(3) |@| Option(5))((_, _))
+  val example1 = (Option(3) |@| Option(5))(_ + _)
   val example2 = zip(Option(3), Option("foo")) : Option[(Int, String)]
   def zip[F[_]: Applicative, A, B](l: F[A], r: F[B]): F[(A, B)] =
     ???
-  def ap2[F[_]: Applicative, A, B](fa: F[A], fab: F[A => B]): F[B] =
+  def ap2[F[_]: Zip, A, B](fa: F[A], fab: F[A => B]): F[B] =
     ???
 
   //
@@ -239,6 +332,17 @@ object functor {
         f: => Parser[E, A => B]): Parser[E,B] =
           ???
     }
+
+  // implicit def ApplicativeList: Applicative[List] =
+  //   new Applicative[List] {
+  //     def point[A](a: => A): List[A] = List(a)
+  //
+  //     def ap[A, B](fa: => List[A])(f: => List[A => B]): List[B] =
+  //       for {
+  //         a <- fa
+  //         f <- f
+  //       } yield f(a)
+  //   }
 
   //
   // EXERCISE 11
@@ -266,16 +370,35 @@ object functor {
       def bind[A, B](fa: Parser[E,A])(f: A => Parser[E,B]): Parser[E,B] =
         ???
     }
+}
 
-  /*
-   def flatMap[E1 >: E, B](f: A => Parser[E1, B]): Parser[E1, B] =
+object parser {
+  //
+  // EXERCISE 1
+  //
+  // Implement all missing methods for parser.
+  //
+  case class Parser[+E, +A](run: String => Either[E, (String, A)]) { self =>
+    def ~ [E1 >: E, B](that: => Parser[E1, B]): Parser[E1, (A, B)] =
+      self.flatMap(a => that.map(b => (a, b)))
+
+    def ~> [E1 >: E, B](that: => Parser[E1, B]): Parser[E1, B] =
+      (self ~ that).map(_._2)
+
+    def <~ [E1 >: E, B](that: => Parser[E1, B]): Parser[E1, A] =
+      (self ~ that).map(_._1)
+
+    def map[B](f: A => B): Parser[E, B] =
+      flatMap(f.andThen(Parser.point[B](_)))
+
+    def flatMap[E1 >: E, B](f: A => Parser[E1, B]): Parser[E1, B] =
       Parser[E1, B](input =>
         self.run(input) match {
           case Left(e) => Left(e)
           case Right((input, a)) => f(a).run(input)
         })
 
-    def orElse[E1 >: E, B](that: Parser[E1, B]): Parser[E1, Either[A, B]] = {
+    def orElse[E1 >: E, B](that: => Parser[E1, B]): Parser[E1, Either[A, B]] = {
       val self1 = self.map(Left(_))
       val that1 = that.map(Right(_))
 
@@ -291,7 +414,7 @@ object functor {
           case Right((input, a)) => if (f(a)) Right((input, a)) else Left(e0)
         })
 
-    def | [E1 >: E, A1 >: A](that: Parser[E1, A1]): Parser[E1, A1] =
+    def | [E1 >: E, A1 >: A](that: => Parser[E1, A1]): Parser[E1, A1] =
       (self orElse (that)).map(_.merge)
 
     def rep: Parser[E, List[A]] =
@@ -344,53 +467,6 @@ object functor {
       digits  <- (Parser.digit(ExpectedDigit) <~ Parser.literal(ExpectedLit)(',')).rep
       _       <- Parser.literal(ExpectedLit)(']')
     } yield digits
-} */
-
-  case class Parser[+E, +A](run: String => Either[E, (String, A)]) { self =>
-    def ~ [E1 >: E, B](that: => Parser[E1, B]): Parser[E1, (A, B)] =
-      self.flatMap(a => that.map(b => (a, b)))
-
-    def ~> [E1 >: E, B](that: => Parser[E1, B]): Parser[E1, B] =
-      //self.flatMap(a => that.map(b => b))
-      (self ~ that).map(_._2)
-
-    def <~ [E1 >: E, B](that: => Parser[E1, B]): Parser[E1, A] = 
-      //self.flatMap(a => that.map(_ => a))
-      (self ~ that).map(_._1)
-
-    def map[B](f: A => B): Parser[E, B] = flatMap(f.andThen(Parser.point[B](_)))
-
-    def flatMap[E1 >: E, B](f: A => Parser[E1, B]): Parser[E1, B] = Parser[E1, B] {
-      input => self.run(input) match {
-        case Left(e) => Left(e)
-        case Right(a) => f(a._2).run(a._1)
-      }
-    }
-
-    def orElse[E1 >: E, B](that: => Parser[E1, B]): Parser[E1, Either[A, B]] = {
-      val self1 = self.map(Left(_))
-      val that1 = that.map(Right(_))
-
-      type Return = Either[E1, (String, Either[A,B])]
-
-      Parser(i => self1.run(i).fold[Return](_ => that1.run(i), Right(_)))
-    }
-
-    def | [E1 >: E, A1 >: A](that: Parser[E1, A1]): Parser[E1, A1] =
-      (self orElse (that)).map(_.merge)
-  }
-  object Parser {
-    def fail[E](e: E): Parser[E, Nothing] =
-      Parser(input => Left(e))
-
-    def point[A](a: => A): Parser[Nothing, A] =
-      Parser(input => Right((input, a)))
-
-    def char[E](e: E): Parser[E, Char] =
-      Parser(input =>
-        if (input.length == 0) Left(e)
-        else Right((input.drop(1), input.charAt(0))))
-  }
 }
 
 object foldable {
@@ -400,6 +476,25 @@ object foldable {
    /**Right-associative fold of a structure. */
    def foldRight[A, B](fa: F[A], z: => B)(f: (A, => B) => B): B
 }*/
+  //
+  // EXERCISE 0
+  //
+  // Define an instance of `Foldable` for `List`
+  //
+  implicit val FoldableList: Foldable[List] = new Foldable[List] {
+    def foldMap[A, B: Monoid](fa: List[A])(f: A => B): B =
+      fa match {
+        case Nil => mzero[B]
+        case a :: as => f(a) |+| foldMap(as)(f)
+      }
+
+    def foldRight[A, B](fa: List[A], z: => B)(f: (A, => B) => B): B =
+      fa match {
+        case Nil => z
+        case a :: as => f(a, foldRight(as, z)(f))
+      }
+  }
+
   //
   // EXERCISE 1
   //
@@ -421,7 +516,7 @@ object foldable {
           f: (A, => B) => B): B =
         fa match {
           case Leaf(a) => f(a, z)
-          case Fork(l,r) => 
+          case Fork(l,r) =>
             val newZero = foldRight(r, z)(f)
             foldRight(l, newZero)(f)
         }
@@ -430,10 +525,9 @@ object foldable {
   //
   // EXERCISE 2
   //
-  // Try to define an instance of `Foldable` for `A => ?`.
+  // Try to define an instance of `Foldable` for `A0 => ?`.
   //
-  implicit def FunctionFoldable[A]: Foldable[A => ?] =
-    ???
+  implicit def FunctionFoldable[A0]: Foldable[A0 => ?] = ???
 
   //
   // EXERCISE 3
@@ -446,7 +540,7 @@ object foldable {
         f: A => G[B])(implicit F: Applicative[G]): G[BTree[B]] =
         fa match {
           case Leaf(a) => f(a).map(Leaf(_))
-          case Fork(l, r) => 
+          case Fork(l, r) =>
             val l2 = traverseImpl(l)(f)
             val r2 = traverseImpl(r)(f)
 

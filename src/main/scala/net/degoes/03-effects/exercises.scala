@@ -67,7 +67,7 @@ object zio_background {
   // Rewrite `yourName2` using the helper function `getName`, which shows how
   // to create larger programs from smaller programs.
   //
-  def yourName3: Program[Unit] = ???
+  val yourName3: Program[Unit] = ???
 
   val getName: Program[String] =
     writeLine("What is your name?").flatMap(_ => readLine)
@@ -78,7 +78,8 @@ object zio_background {
   // Implement the following effectful procedure, which interprets
   // `Program[A]` into `A`. You can use this procedure to "run" programs.
   //
-  def interpret[A](program: Program[A]): A = ???
+  def interpret[A](program: Program[A]): A =
+    ???
 
   //
   // EXERCISE 4
@@ -111,7 +112,6 @@ object zio_background {
 
         ageExplainer1()
     }
-
   }
   def ageExplainer2: Program[Unit] = ???
 }
@@ -330,8 +330,7 @@ object zio_failure {
   // represents a failure with a string error message, containing a user-
   // readable description of the failure.
   //
-  val stringFailure1: IO[String, Int] =
-    ???
+  val stringFailure1: IO[String, Int] = ???
 
   //
   // EXERCISE 2
@@ -435,7 +434,26 @@ object zio_effects {
   // Using the `IO.syncException` method, wrap Scala's `getLines` method to
   // import it into the world of pure functional programming.
   //
-  def readFile(file: File): IO[Exception, List[String]] =
+  def readFile1(file: File): IO[Exception, List[String]] =
+    Source.fromFile(file).getLines.toList ?
+
+  //
+  // EXERCISE 3.5
+  //
+  // Using the `IO.syncThrowable` method, wrap Scala's `getLines` method to
+  // import it into the world of pure functional programming.
+  //
+  def readFile2(file: File): IO[Throwable, List[String]] =
+    Source.fromFile(file).getLines.toList ?
+
+  //
+  // EXERCISE 3.75
+  //
+  // Using the `IO.syncCatch` method, wrap Scala's `getLines` method to
+  // import it into the world of pure functional programming.
+  //
+  import java.io.IOException
+  def readFile3(file: File): IO[IOException, List[String]] =
     Source.fromFile(file).getLines.toList ?
 
   //
@@ -538,8 +556,7 @@ object zio_concurrency {
   //
   // Compute all values `workers` in parallel using `IO.parAll`.
   //
-  val workers: List[IO[Nothing, Int]] =
-    (1 to 10).toList.map(fibonacci(_))
+  val workers: List[IO[Nothing, Int]] = (1 to 10).toList.map(fibonacci(_))
   val workersInParallel: IO[Nothing, List[Int]] =
     ???
 
@@ -577,7 +594,7 @@ object zio_concurrency {
   //
   // EXERCISE 8
   //
-  // Use the `zipWith` method of the `Fiber` object to combine `fiber1` and
+  // Use the `seqWith` method of the `Fiber` object to combine `fiber1` and
   // `fiber2` into a single fiber (by summing the results), so they can be
   // interrupted together.
   //
@@ -585,15 +602,30 @@ object zio_concurrency {
     for {
       fiber1 <- fibonacci(10).fork
       fiber2 <- fibonacci(20).fork
-      both   <- (??? : IO[Nothing, Fiber[Nothing, Int]])
+      both = fiber1.zipWith(fiber2)(_ + _)
       _      <- both.interrupt
     } yield ()
+
+  //
+  // EXERCISE 9
+  //
+  // Use the `timeout` method of `IO` to time out the following long-lived
+  // computation after 60 seconds.
+  //
+  val timedout: IO[Nothing, Option[Int]] = fibonacci(100) ?
+
+  //
+  // EXERCISE 10
+  //
+  // Use `IO.parTraverse` to compute the fibonacci numbers of the list of
+  // integers in parallel.
+  //
+  val fibsToCompute = List(1, 2, 3, 4, 5, 6, 7)
+  val inParallel: IO[Nothing, List[Int]] = IO.parTraverse(fibsToCompute)(fibonacci(_))
 
   def fibonacci(n: Int): IO[Nothing, Int] =
     if (n <= 1) IO.now(n)
     else fibonacci(n - 1).seqWith(fibonacci(n - 2))(_ + _)
-
-  val timedout: IO[Nothing, Option[Int]] = fibonacci(100) ?
 }
 
 object zio_resources {
@@ -773,6 +805,15 @@ object zio_schedule {
   //
   // EXERCISE 8
   //
+  // Using the `&&` method of the `Schedule` object, the `fiveTimes` schedule,
+  // and the `everySecond` schedule, create a schedule that repeats the minimum
+  // of five times and every second.
+  //
+  val fiveTimesOrEverySecond = ???
+
+  //
+  // EXERCISE 9
+  //
   // Produce a jittered schedule that first does exponential spacing (starting
   // from 10 milliseconds), but then after the spacing reaches 60 seconds,
   // switches over to fixed spacing of 60 seconds between recurrences, but will
@@ -927,6 +968,18 @@ object zio_promise extends RTS {
 }
 
 object zio_queue {
+  implicit class FixMe[A](a: A) {
+    def ? = ???
+  }
+
+  //
+  // EXERCISE 1
+  //
+  // Using the `Queue.bounded`, create a queue for `Int` values with a capacity
+  // of 10.
+  //
+  val makeQueue: IO[Nothing, Queue[Int]] =
+    Queue.bounded(10)
 
   val makeQueue: IO[Nothing, Queue[Int]] = Queue.bounded(10)
 
@@ -969,13 +1022,73 @@ object zio_queue {
         i
       })))
     } yield vs*/
+  //
+  // EXERCISE 2
+  //
+  // Using the `offer` method of `Queue`, place an integer value into a queue.
+  //
+  val offered1: IO[Nothing, Unit] =
+    for {
+      queue <- makeQueue
+      _     <- (queue ? : IO[Nothing, Unit])
+    } yield ()
+
+  //
+  // EXERCISE 3
+  //
+  // Using the `take` method of `Queue`, take an integer value from a queue.
+  //
+  val taken1: IO[Nothing, Int] =
+    for {
+      queue <- makeQueue
+      _     <- queue.offer(42)
+      value <- (queue ? : IO[Nothing, Int])
+    } yield value
+
+  //
+  // EXERCISE 4
+  //
+  // In one fiber, place 2 values into a queue, and in the main fiber, read
+  // 2 values from the queue.
+  //
+  val offeredTaken1: IO[Nothing, (Int, Int)] =
+    for {
+      queue <- makeQueue
+      _     <- (??? : IO[Nothing, Unit]).fork
+      v1    <- (queue ? : IO[Nothing, Int])
+      v2    <- (queue ? : IO[Nothing, Int])
+    } yield (v1, v2)
+
+  //
+  // EXERCISE 5
+  //
+  // In one fiber, read infintely many values out of the queue and write them
+  // to the console. In the main fiber, write 100 values into a queue.
+  //
+  val infiniteReader1: IO[Nothing, List[Int]] =
+    for {
+      queue <- makeQueue
+      _     <- (??? : IO[Nothing, Nothing]).fork
+      vs    <- (queue ? : IO[Nothing, List[Int]])
+    } yield vs
+
+  //
+  // EXERCISE 6
+  //
+  // Using `Queue`, `Ref`, and `Promise`, implement an "actor" like construct
+  // that can atomically update the values of a counter.
+  //
+  val makeCounter: IO[Nothing, Int => IO[Nothing, Int]] =
+    for {
+      counter <- Ref(0)
+      queue   <- Queue.bounded[(Int, Promise[Nothing, Int])](100)
+      _       <- (queue.take ? : IO[Nothing, Fiber[Nothing, Nothing]])
+    } yield { (amount: Int) =>
+      ???
+    }
 }
 
 object zio_rts {
-
-}
-
-object zio_challenge {
 
 }
 
