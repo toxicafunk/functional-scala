@@ -1096,18 +1096,26 @@ object zio_queue {
   // Using `Queue`, `Ref`, and `Promise`, implement an "actor" like construct
   // that can atomically update the values of a counter.
   //
-  /*
-  val makeCounter: IO[Nothing, Int => IO[Nothing, Int]] =
+  sealed trait Message
+  case class Increment(amount: Int) extends Message
+  val makeCounter: IO[Nothing, Message => IO[Nothing, Int]] =
     for {
       counter <- Ref(0)
-      queue   <- Queue.bounded[(Int, Promise[Nothing, Int])](100)
-      _       <- (queue.take ? : IO[Nothing, Fiber[Nothing, Nothing]])
-    } yield { (amount: Int) =>
-      ???
+      mailbox   <- Queue.bounded[(Message, Promise[Nothing, Int])](100)
+      _       <- (mailbox.take.flatMap {
+                    case (Increment(amount), promise) =>
+                      counter.update(_ + amount).flatMap(promise.complete)
+                  }.forever.fork : IO[Nothing, Fiber[Nothing, Nothing]])
+    } yield { (message: Message) =>
+      for {
+        promise <- Promise.make[Nothing, Int]
+        _       <- mailbox.offer((message, promise))
+        value   <- promise.get
+      } yield value
     }
-  */
 
-  val makeCounter: IO[Nothing, Int => IO[Nothing, Int]] =
+
+  val makeCounter1: IO[Nothing, Int => IO[Nothing, Int]] =
     for {
       counter <- Ref(0)
       queue   <- Queue.bounded[(Int, Promise[Nothing, Int])](100)
@@ -1135,9 +1143,9 @@ object zio_queue {
   // create a producer
   val counterExample: IO[Nothing, Int] =
     for {
-      counterFn <- makeCounter
-      _         <- IO.parAll(List.fill(100)(IO.traverse(0 to 100)(counterFn)))
-      value     <- counterFn(0) // call the counterFn with 0, this will happen 100 times in parallel thanks to parAll
+      counter <- makeCounter
+      _         <- IO.parAll(List.fill(100)(IO.traverse((0 to 100).map(Increment(_)))(counter))) // 100 fibres in parallel calling increment
+      value     <- counter(Increment(0)) // call the counter with 0, this will happen 100 times in parallel thanks to parAll
     } yield value
 }
 
