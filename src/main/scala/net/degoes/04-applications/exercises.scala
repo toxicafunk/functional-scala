@@ -15,10 +15,25 @@ object exercises extends App {
   //
   // Implement the `crawlIO` function.
   //
-  def crawlIO[E: Monoid, A: Monoid](
+  /*def crawlIO[E: Monoid, A: Monoid](
     seeds     : Set[URL],
     router    : URL => Set[URL],
-    processor : (URL, String) => IO[E, A]): IO[Exception, Crawl[E, A]] = ???
+    processor : (URL, String) => IO[E, A]): IO[Exception, Crawl[E, A]] = {
+    def loop(seeds: Set[URL], acc: Crawl[E,A]): IO[Exception, Crawl[E,A]] = {
+      seeds.foldLeft[IO[Exception, Crawl[E,A]]](IO.now(acc)) {
+        case (acc: IO[Exception, Crawl[E,A]], seed: URL) => for {
+          html  <- getURL(seed)
+          urls  <- extractURLs(seed, html).toSet.flatMap(router)
+          crawl <- processor(seed, html)
+                .redeemPure(Crawl(_, mzero[A]), Crawl(mzero[E], _))
+          crawl <- acc.map(_ |+| crawl)
+          crawl <- loop(urls, crawl)
+        } yield crawl
+      }
+    }
+
+    loop(seeds, mzero[Crawl[E,A]], mzero[Crawl[E,A]])
+  } */
 
   //
   // EXERCISE 2
