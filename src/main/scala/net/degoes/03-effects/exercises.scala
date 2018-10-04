@@ -4,14 +4,14 @@ package net.degoes.effects
 
 import java.io.IOException
 
-import jdk.nashorn.internal.ir.RuntimeNode.Request
 import scalaz.zio._
 import scalaz.zio.console._
-
 import scala.concurrent.duration._
 
 object zio_background {
   sealed trait Program[A] { self =>
+
+    /*
     final def *> [B](that: Program[B]): Program[B] =
       self.flatMap(_ => that)
     final def <* [B](that: Program[B]): Program[A] =
@@ -26,6 +26,20 @@ object zio_background {
         case Program.Return(value) =>
           Program.Return(() => f(value()))
       }
+    */
+
+    final def *> [B](that: Program[B]): Program[B] = self.zip(that).map(_._2)
+
+    final def <* [B](that: Program[B]): Program[A] = self.zip(that).map(_._1)
+
+    final def map[B](f: A => B): Program[B] =
+      flatMap(f andThen (Program.point(_)))
+
+    final def zip[B](that: Program[B]): Program[(A, B)] =
+      for {
+        a <- self
+        b <- that
+      } yield (a, b)
 
     final def flatMap[B](f: A => Program[B]): Program[B] =
       self match {
@@ -645,29 +659,6 @@ object zio_resources {
       IO.syncException(new InputStream(new FileInputStream(file)))
   }
 
-  {
-    println("Started")
-    try {
-      try throw new Error("Primary error")
-      finally throw new Error("Secondary error")
-    } catch {
-      case e : Error => println(e)
-    }
-    println("Ended")
-  }
-
-  /*val acquire: IO[Exception, FileHandle]
-  val release: FileHandle => IO[Nothing, Unit]
-  val use    : FileHandle => IO[Exception, Result]
-
-  acquire.bracket(release)(use)
-  acquire.bracket(release) { fileHandle =>
-    for {
-      bytes1 <- readChunk(fileHandle)
-      bytes2 <- readChunk(fileHandle)
-    } yield bytes1 ++ bytes2
-  }*/
-
   //
   // EXERCISE 1
   //
@@ -678,8 +669,7 @@ object zio_resources {
     try throw new Exception("Uh oh")
     finally println("On the way out...")
   val tryCatch2: IO[Exception, Unit] =
-    IO.fail(new Exception("Uh oh"))
-      .bracket(_ => IO.sync(println("On the way out...")))(IO.now)
+    ???
 
   //
   // EXERCISE 2
@@ -699,15 +689,7 @@ object zio_resources {
       bytes  <- readAll(stream, Nil)
     } yield bytes
   }
-  def readFile2(file: File): IO[Exception, List[Byte]] ={
-
-    def readAll(is: InputStream, acc: List[Byte]): IO[Exception, List[Byte]] =
-      is.read.flatMap {
-        case None => IO.now(acc.reverse)
-        case Some(byte) => readAll(is, byte :: acc)
-      }
-    InputStream.openFile(file).bracket(_.close.attempt.void)(readAll(_, Nil))
-  }
+  def readFile2(file: File): IO[Exception, List[Byte]] = ???
 
   //
   // EXERCISE 3
@@ -718,7 +700,7 @@ object zio_resources {
     (try0: IO[E, A])
     (catch0: PartialFunction[E, IO[E, A]])
     (finally0: IO[Nothing, Unit]): IO[E, A] =
-    try0.catchSome(catch0).ensuring(finally0)
+      ???
 
   //
   // EXERCISE 4
@@ -831,7 +813,7 @@ object zio_schedule {
     Schedule.recurs(5) andThen (Schedule.spaced(1.second) && Schedule.recurs(1)).loop
 
   val error1 = IO.fail("Uh oh!")
-  val retried5 = error1.retry(fiveTimes)
+  val retried5 = error1 ?
 
   //
   // EXERCISE 8
@@ -874,7 +856,7 @@ object zio_interop {
   // Use `IO.fromFuture` method to convert the following `Future` into an `IO`.
   //
   val future1 = () => Future.successful("Hello World")
-  val io1 = IO.fromFuture(???)(global)
+  val io1: IO[Throwable, String] = IO.fromFuture(???)(global)
 
   //
   // EXERCISE 2
@@ -925,6 +907,9 @@ object zio_interop {
 }
 
 object zio_ref {
+  implicit class FixMe[A](a: A) {
+    def ? = ???
+  }
   // Ref is a volatile, atomic, purely functional `var`
   val zero: IO[Nothing, Ref[Int]] = Ref(0)
 
@@ -977,6 +962,12 @@ object zio_promise extends RTS {
     completed <- promise.interrupt
   } yield completed
 
+  //
+  // EXERCISE 6
+  //
+  // Using the `get` method of `Promise`, retrieve a value computed from inside
+  // another fiber.
+  //
   val handoff1: IO[Nothing, Int] =
     for {
       promise <- Promise.make[Nothing, Int]
@@ -984,6 +975,12 @@ object zio_promise extends RTS {
       value   <- promise.get
     } yield value
 
+  //
+  // EXERCISE 7
+  //
+  // Using the `get` method of `Promise`, try to retrieve a value from a promise
+  // that was failed in another fiber.
+  //
   val handoff2: IO[Error, Int] =
     for {
       promise <- Promise.make[Error, Int]
@@ -991,6 +988,12 @@ object zio_promise extends RTS {
       value   <- promise.get
     } yield value
 
+  //
+  // EXERCISE 8
+  //
+  // Using the `get` method of `Promise`, try to retrieve a value from a promise
+  // that was interrupted in another fiber.
+  //
   val handoff3: IO[Error, Int] =
     for {
       promise <- Promise.make[Error, Int]
@@ -1150,7 +1153,15 @@ object zio_queue {
 }
 
 object zio_rts {
+  implicit class FixMe[A](a: A) {
+    def ? = ???
+  }
 
+  //
+  // EXERCISE 1
+  //
+  // Create a new runtime system (that extends scalaz.zio.RTS).
+  //
   val MyRTS: RTS = new RTS{}
 
   val u1 : Unit = MyRTS.unsafeRun(putStrLn("Hello World!"))
