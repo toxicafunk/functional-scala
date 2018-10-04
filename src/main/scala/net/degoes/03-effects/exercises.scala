@@ -1083,15 +1083,12 @@ object zio_queue {
     } yield vs
   }
 
-  /*val infiniteReader2: IO[Nothing, List[Int]] =
+  val infiniteReader2: IO[Nothing, List[Int]] =
     for {
       queue <- makeQueue
-      _     <- (queue.take.flatMap(i => putStrLn(i.toString).attempt.void) forever: IO[Nothing, Nothing]).fork
-      vs    <- (IO.sequence((1 to 100).toList.map(i => {
-        queue.offer(i)
-        i
-      })))
-    } yield vs*/
+      _     <- queue.take.flatMap(i => putStrLn(i.toString).attempt.void).forever.fork
+      vs    <- IO.sequence((1 to 100).map(i => queue.offer(i).map(_ => i)))
+    } yield vs
 
   //
   // EXERCISE 6
