@@ -3,34 +3,33 @@ package es.richweb
 import java.io.IOException
 
 import scalaz.zio._
-import scalaz.zio.console._
-import scalaz._
-import Scalaz._
-import scalaz.zio.interop.scalaz72._
+import scala.concurrent.duration._
 
 object Main extends App {
 
-  implicit val ShowInt: Show[Int] = new Show[Int] {
-    override def shows(f: Int): String = f.toString
-  }
+  def write[A]: A => IO[Nothing, Unit] = (s: A) => IO.sync(println(s"$s (${System.currentTimeMillis()})"))
 
-  implicit val ShowString: Show[String] = new Show[String] {
-    override def shows(f: String): String = f
-  }
+  def program[A]: A => IO[IOException, String] = input => for {
+    msg <- IO.point(input)
+    _ <- write(msg)
+  } yield msg.toString
 
-  def write[A]: A => IO[Nothing, Unit] = (s: A) => IO.sync(println(s"${s} at ${System.currentTimeMillis()}"))
+  def transformString[A](f: String => A): IO[IOException, String] => IO[IOException, A] = input => input.map(f)
 
-  val program: IO[IOException, String] = for {
-    msg <- IO.point("Hello World!")
-    _   <- write(msg)
-  } yield msg
+  val lengther: String => IO[IOException, Int] = transformString(_.length) compose program
 
-  def transformer[A](f: String => A): IO[IOException, String] => IO[IOException, A] = input => {
-    input.map(f)
-  }
+  val yeller: String => IO[IOException, String] = transformString(_.toUpperCase()) compose program
 
-  def run(args: List[String]): IO[Nothing, ExitStatus] =
-    (transformer((_.size))(program)).flatMap(i => write(i.toString))
-      .repeat(Schedule.recurs(5))
-      .redeemPure(_ => ExitStatus.ExitNow(1), s => ExitStatus.ExitNow(0))
+  val timesTen: String => IO[IOException, Int] = ((input: IO[IOException, Int]) => input.map(10 * _)) compose lengther
+
+  def run(args: List[String]): IO[Nothing, ExitStatus] = (
+    for {
+      l <- yeller(args(0))
+      l1 <- timesTen(l)
+      _ <- program(l1)
+    } yield ()
+    )
+    .repeat(Schedule.recurs(args(1).toInt) && Schedule.spaced(args(2).toInt.second))
+    .redeemPure(_ => ExitStatus.ExitNow(1), s => ExitStatus.ExitNow(0))
+
 }
