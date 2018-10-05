@@ -427,3 +427,108 @@ object exercises extends App {
       //      _   <- myGameIO
     } yield ()).redeemPure(_ => ExitStatus.ExitNow(1), _ => ExitStatus.ExitNow(0))
 }
+
+sealed trait Free[F[_], A] { self =>
+  final def map[B](f: A => B): Free[F, B] = self.flatMap(f.andThen(Free.point[F, B](_)))
+
+  final def flatMap[B](f: A => Free[F, B]): Free[F, B] = Free.FlatMap(self, f)
+
+  final def <* [B](that: Free[F, B]): Free[F, A] =
+    self.flatMap(a => that.map(_ => a))
+
+  final def *> [B](that: Free[F, B]): Free[F, B] =
+    self.flatMap(_ => that)
+
+  final def fold[G[_]: Monad](interpreter: F ~> G): G[A] =
+    self match {
+      case Free.Return(value0)  => value0().point[G]
+      case Free.Effect(fa)      => interpreter(fa)
+      case Free.FlatMap(fa0, f) => fa0.fold(interpreter).flatMap(a0 => f(a0).fold(interpreter))
+    }
+}
+object Free {
+  case class Return[F[_], A](value0: () => A) extends Free[F, A] {
+    lazy val value = value0()
+  }
+  case class Effect[F[_], A](effect: F[A]) extends Free[F, A]
+  case class FlatMap[F[_], A0, A](fa0: Free[F, A0], f: A0 => Free[F, A]) extends Free[F, A]
+
+  def point[F[_], A](a: => A): Free[F, A] = Return(() => a)
+  def lift[F[_], A](fa: F[A]): Free[F, A] = Effect(fa)
+}
+object FreeTest {
+
+  sealed trait ConsoleF[A]
+
+  final case object ReadLine extends ConsoleF[String]
+
+  final case class PrintLine(line: String) extends ConsoleF[Unit]
+
+  def readLine: Free[ConsoleF, String] = Free.lift[ConsoleF, String](ReadLine)
+
+  def printLine(line: String): Free[ConsoleF, Unit] = Free.lift[ConsoleF, Unit](PrintLine(line))
+
+  val program: Free[ConsoleF, String] =
+    for {
+      _ <- printLine("Good morning! What is your name?")
+      name <- readLine
+      _ <- printLine("Good to meet you, " + name + "!")
+    } yield name
+
+  import scalaz.zio.IO
+  import scalaz.zio.interop.scalaz72._
+
+  val programIO: IO[Nothing, String] =
+    program.fold[IO[Nothing, ?]](new NaturalTransformation[ConsoleF, IO[Nothing, ?]] {
+      def apply[A](consoleF: ConsoleF[A]): IO[Nothing, A] =
+        consoleF match {
+          case ReadLine => IO.sync(scala.io.StdIn.readLine())
+          case PrintLine(line) => IO.sync(println(line))
+        }
+    })
+
+  case class TestData(input: List[String], output: List[String])
+
+  case class State[S, A](run: S => (S, A)) {
+    def eval(s: S): A = run(s)._2
+  }
+
+  object State {
+    implicit def MonadState[S]: Monad[State[S, ?]] =
+      new Monad[State[S, ?]] {
+        def point[A](a: => A): State[S, A] = State(s => (s, a))
+
+        def bind[A, B](fa: State[S, A])(f: A => State[S, B]): State[S, B] =
+          State[S, B](s => fa.run(s) match {
+            case (s, a) => f(a).run(s)
+          })
+      }
+
+    def get[S]: State[S, S] = State(s => (s, s))
+
+    def set[S](s: S): State[S, Unit] = State(_ => (s, ()))
+
+    def modify[S](f: S => S): State[S, Unit] =
+      get[S].flatMap(s => set(f(s)))
+  }
+
+  val programState: State[TestData, String] =
+    program.fold[State[TestData, ?]](new NaturalTransformation[ConsoleF, State[TestData, ?]] {
+      def apply[A](consoleF: ConsoleF[A]): State[TestData, A] =
+      /*_*/
+        consoleF match {
+          case ReadLine =>
+            for {
+              data <- State.get[TestData]
+              line = data.input.head
+              _ <- State.set(data.copy(input = data.input.drop(1)))
+            } yield line
+
+          case PrintLine(line) =>
+            State.modify[TestData](d => d.copy(output = line :: d.output))
+        }
+      /*_*/
+    })
+
+  programState.eval(TestData("John" :: Nil, Nil))
+}

@@ -511,6 +511,13 @@ object zio_effects {
       def run(): Unit = ???
     }, l, u) ?
 
+
+  def readChunk(success: Array[Byte] => Unit, failure: Throwable => Unit): Unit = ???
+  val readChunkIO: IO[Throwable, Array[Byte]] =
+    IO.async[Throwable, Array[Byte]](k =>
+      readChunk(k.compose(ExitResult.Completed(_)), k.compose(ExitResult.Failed(_)))
+    )
+
   //
   // EXERCISE 8
   //
